@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Coach</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+</head>
+<style>
+    body {
+        margin: 0;
+        overflow-y: scroll;
+        position: relative;
+    }
+
+    #title {
+        position: absolute;
+        top: 50%;
+        left: 45%;
+        color: #fff;
+        font-family: Roboto;
+        transform: translate(-50%, -50%);
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    #subheading {
+        position: absolute;
+        top: 53%;
+        left: 53%;
+        color: #fff;
+        font-family: Roboto;
+        transform: translate(-50%, -50%);
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    #subheading:hover {
+        font-weight: 900;
+        font-size: large;
+        cursor: pointer;
+    }
+
+    #signup-form-container {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        background-color: rgba(0, 0, 0, 0);
+        border-radius: 10px;
+        display: none;
+        padding: 20px;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    #signup-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    #signup-form h2 {
+        color: #fff;
+        font-family: Roboto, sans-serif;
+        font-weight: 500;
+        font-size: 24px;
+        margin-bottom: 20px;
+    }
+
+    #signup-form input {
+        padding: 10px;
+        border: 2px solid #1a73e8;
+        background-color: #000;
+        color: #fff;
+        font-family: Roboto, sans-serif;
+        font-weight: 300;
+        font-size: 16px;
+        border-radius: 5px;
+    }
+
+    #signup-form input::placeholder {
+        color: #666;
+    }
+
+    #signup-form button[type="submit"] {
+        background-color: #000;
+        color: #1a73e8;
+        color: #fff;
+        padding: 10px;
+        border: none;
+        border-radius: 5px;
+        font-family: Roboto, sans-serif;
+        font-weight: 500;
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    #signup-form button[type="button"] {
+        background-color: #000;
+        color: #001837;
+        padding: 10px;
+        border: none;
+        font-family: Roboto, sans-serif;
+        font-weight: 500;
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    #signup-form input,
+    #signup-form button {
+        border-radius: 10px;
+    }
+
+    #signup-form button[type="submit"]:hover {
+        background-color: #0f57c9;
+        transition: background-color 0.2s ease-in-out;
+    }
+
+    #signup-form button[type="button"]:hover {
+        color: #fff;
+        background-color: #1a73e8;
+        transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+    }
+</style>
+
+<body>
+    <video id="video" loop muted crossOrigin="anonymous" playsinline style="display:none">
+        <source src="kinect.webm">
+        <source src="kinect.mp4">
+    </video>
+    <script id="vs" type="x-shader/x-vertex">
+
+			uniform sampler2D map;
+
+			uniform float width;
+			uniform float height;
+			uniform float nearClipping, farClipping;
+
+			uniform float pointSize;
+			uniform float zOffset;
+
+			varying vec2 vUv;
+
+			const float XtoZ = 1.11146; // tan( 1.0144686 / 2.0 ) * 2.0;
+			const float YtoZ = 0.83359; // tan( 0.7898090 / 2.0 ) * 2.0;
+
+			void main() {
+
+				vUv = vec2( position.x / width, position.y / height );
+
+				vec4 color = texture2D( map, vUv );
+				float depth = ( color.r + color.g + color.b ) / 3.0;
+
+				// Projection code by @kcmic
+
+				float z = ( 1.0 - depth ) * (farClipping - nearClipping) + nearClipping;
+
+				vec4 pos = vec4(
+					( position.x / width - 0.5 ) * z * XtoZ,
+					( position.y / height - 0.5 ) * z * YtoZ,
+					- z + zOffset,
+					1.0);
+
+				gl_PointSize = pointSize;
+				gl_Position = projectionMatrix * modelViewMatrix * pos;
+
+			}
+
+		</script>
+
+    <script id="fs" type="x-shader/x-fragment">
+
+			uniform sampler2D map;
+
+			varying vec2 vUv;
+
+			void main() {
+
+				vec4 color = texture2D( map, vUv );
+				gl_FragColor = vec4( color.r, color.g, color.b, 0.2 );
+
+			}
+
+		</script>
+
+    <!-- Import maps polyfill -->
+    <!-- Remove this when import maps will be widely supported -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+    <script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+
+
+        let scene, camera, renderer;
+        let geometry, mesh, material;
+        let mouse, center;
+
+        init();
+        animate();
+
+        function init() {
+
+            const container = document.createElement('div');
+            container.id = 'webgl-container'
+            document.body.appendChild(container);
+
+            // Create title and subheading elements
+            const title = document.createElement('h1');
+            title.innerText = 'Coach will be with you soon';
+            title.id = 'title'
+            container.appendChild(title);
+
+            const subheading = document.createElement('p');
+            subheading.innerText = 'Sign up';
+            subheading.id = 'subheading'
+            subheading.addEventListener('click', onSubheadingClick);
+            container.appendChild(subheading);
+
+            // Create form container and form
+            const formContainer = document.createElement('div');
+            formContainer.id = 'signup-form-container';
+
+            const form = document.createElement('form');
+            form.id = 'signup-form';
+
+            const formTitle = document.createElement('h2');
+            formTitle.innerText = 'Sign up';
+            form.appendChild(formTitle);
+
+            const firstNameInput = document.createElement('input');
+            firstNameInput.type = 'text';
+            firstNameInput.name = 'first-name';
+            firstNameInput.placeholder = 'First name';
+            firstNameInput.required = true;
+            form.appendChild(firstNameInput);
+
+            const lastNameInput = document.createElement('input');
+            lastNameInput.type = 'text';
+            lastNameInput.name = 'last-name';
+            lastNameInput.placeholder = 'Last name';
+            lastNameInput.required = true;
+            form.appendChild(lastNameInput);
+
+            const emailInput = document.createElement('input');
+            emailInput.type = 'email';
+            emailInput.name = 'email';
+            emailInput.placeholder = 'Email';
+            emailInput.required = true;
+            form.appendChild(emailInput);
+
+
+            const submitButton = document.createElement('button');
+            submitButton.type = 'submit';
+            submitButton.innerText = 'Submit';
+            form.appendChild(submitButton);
+
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.innerText = 'Close';
+            closeButton.id = 'close-form';
+            form.appendChild(closeButton);
+
+            formContainer.appendChild(form);
+            container.appendChild(formContainer);
+
+            document.getElementById('close-form').addEventListener('click', () => {
+                document.getElementById('signup-form-container').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('signup-form-container').style.display = 'none';
+                }, 300);
+                document.getElementById('title').style.opacity = '1';
+                document.getElementById('subheading').style.opacity = '1';
+            });
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.set(0, 0, 500);
+
+            scene = new THREE.Scene();
+            center = new THREE.Vector3();
+            center.z = - 1000;
+
+            const video = document.getElementById('video');
+
+            const texture = new THREE.VideoTexture(video);
+            texture.minFilter = THREE.NearestFilter;
+
+            const width = 640, height = 480;
+            const nearClipping = 850, farClipping = 4000;
+
+            geometry = new THREE.BufferGeometry();
+
+            const vertices = new Float32Array(width * height * 3);
+
+            for (let i = 0, j = 0, l = vertices.length; i < l; i += 3, j++) {
+
+                vertices[i] = j % width;
+                vertices[i + 1] = Math.floor(j / width);
+
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+
+            material = new THREE.ShaderMaterial({
+
+                uniforms: {
+
+                    'map': { value: texture },
+                    'width': { value: width },
+                    'height': { value: height },
+                    'nearClipping': { value: nearClipping },
+                    'farClipping': { value: farClipping },
+
+                    'pointSize': { value: 2 },
+                    'zOffset': { value: 1000 }
+
+                },
+                vertexShader: document.getElementById('vs').textContent,
+                fragmentShader: document.getElementById('fs').textContent,
+                blending: THREE.AdditiveBlending,
+                depthTest: false, depthWrite: false,
+                transparent: true
+
+            });
+
+            mesh = new THREE.Points(geometry, material);
+            scene.add(mesh);
+
+            video.play();
+
+            //
+
+            renderer = new THREE.WebGLRenderer();
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            mouse = new THREE.Vector3(0, 0, 1);
+
+            document.addEventListener('mousemove', onDocumentMouseMove);
+
+            //
+
+            window.addEventListener('resize', onWindowResize);
+
+        }
+
+        function onWindowResize() {
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+        }
+
+        function onDocumentMouseMove(event) {
+
+            mouse.x = (event.clientX - window.innerWidth / 2) * 8;
+            mouse.y = (event.clientY - window.innerHeight / 2) * 8;
+
+        }
+
+        function onSubheadingClick() {
+            document.getElementById('signup-form-container').style.opacity = '1';
+            setTimeout(() => {
+                document.getElementById('signup-form-container').style.display = 'block';
+            }, 300);
+            document.getElementById('title').style.opacity = '0';
+            document.getElementById('subheading').style.opacity = '0';
+        }
+
+        function animate() {
+
+            requestAnimationFrame(animate);
+
+            render();
+
+        }
+
+        function render() {
+
+            camera.position.x += (mouse.x - camera.position.x) * 0.05;
+            camera.position.y += (- mouse.y - camera.position.y) * 0.05;
+            camera.lookAt(center);
+
+            renderer.render(scene, camera);
+
+        }
+
+    </script>
+</body>
+
+</html>
